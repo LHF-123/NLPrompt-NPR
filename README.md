@@ -58,6 +58,30 @@ where the first parameter is the name of the dataset, the second parameter is th
 
 After the experiments, all the results are saved to `output/`.
 
+### WebFG-496
+
+WebFG-496 is supported as three sub-datasets: `web_aircraft`, `web_bird` and `web_car`.
+Prepare each split with class folders:
+
+```text
+/path/to/datasets/web-aircraft/train/<class_name>/*.jpg
+/path/to/datasets/web-aircraft/val/<class_name>/*.jpg
+```
+
+The same layout is expected for `web-bird` and `web-car`. Corrupted images are
+checked before dataset items are created; invalid files are skipped and reported.
+The WebFG configs disable synthetic label noise by default because the dataset
+already contains real web noise.
+
+Example:
+
+```bash
+DATA=/your/datasets SEED_LIST="1" LR_LIST="0.001" REG_E_LIST="0.001" \
+bash scripts/nlprompt/main.sh web_aircraft 16 0 real 100
+```
+
+Use class counts `200` for `web_bird` and `196` for `web_car`.
+
 ### Script Configuration (No Hardcoded Path Required)
 
 `scripts/nlprompt/main.sh` accepts runtime parameters:

@@ -1,0 +1,4 @@
+DATASET:
+  NAME: "WebAircraft"
+  NOISE_LABEL: False
+  num_class: 100
