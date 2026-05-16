@@ -186,3 +186,18 @@ python train.py \
 ```bash
 python parse_test_res.py output/web_aircraft/NLPrompt/rn50_16shots/noise_real_0/lr0.001
 ```
+
+## 常见问题
+
+如果在构建学习率调度器时报错：
+
+```text
+TypeError: LRScheduler.__init__() takes from 2 to 3 positional arguments but 4 were given
+```
+
+这是新版 PyTorch 与 Dassl warmup scheduler 的 `verbose` 参数兼容问题。本仓库已在 `Dassl.pytorch/dassl/optim/lr_scheduler.py` 中做兼容处理，默认可以继续使用配置里的：
+
+```yaml
+OPTIM:
+  WARMUP_EPOCH: 1
+```
