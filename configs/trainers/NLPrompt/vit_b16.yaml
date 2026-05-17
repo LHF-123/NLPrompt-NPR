@@ -1,6 +1,6 @@
 DATALOADER:
   TRAIN_X:
-    BATCH_SIZE: 128
+    BATCH_SIZE: 64
   TEST:
     BATCH_SIZE: 256
   NUM_WORKERS: 8
@@ -24,9 +24,18 @@ OPTIM:
 TRAIN:
   PRINT_FREQ: 5
 
+TEST:
+  FINAL_MODEL: "best_val"  # 每个 epoch 跑 val 并保存最好模型；嫌慢可改 last_step
+  SPLIT: "test"            # 最终训练结束后评测 test
+
 TRAINER:
-    NLPROMPT:
-      PREC: "fp16"
+  NAME: "NLPrompt"
+  NLPROMPT:
+    N_CTX: 16
+    CSC: False
+    CTX_INIT: ""
+    PREC: "fp16"
+    CLASS_TOKEN_POSITION: "end"
 
 MODEL:
   BACKBONE:
