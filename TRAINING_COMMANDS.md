@@ -217,3 +217,17 @@ TypeError: LRScheduler.__init__() takes from 2 to 3 positional arguments but 4 w
 OPTIM:
   WARMUP_EPOCH: 1
 ```
+
+如果遇到截断图片报错：
+
+```text
+OSError: image file is truncated
+```
+
+WebFG 数据集适配会在建表时强制解码图片并跳过坏图。若之前已经生成过 few-shot 缓存，请删除对应缓存后重跑：
+
+```bash
+rm -rf /path/to/datasets/web-bird/split_fewshot
+```
+
+`web-aircraft` 和 `web-car` 同理。

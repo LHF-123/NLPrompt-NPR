@@ -2,7 +2,7 @@ DATASET:
   NAME: "WebAircraft"  # 数据集注册名，对应 datasets/webfg496.py 中的 WebAircraft
   NUM_SHOTS: 16        # 每类训练样本数；设为 -1 表示使用全量训练集
   NOISE_LABEL: False   # WebFG 是真实 web 噪声数据，默认不额外注入合成噪声
-  NOISE_RATE: 0        # 合成噪声比例；仅在 NOISE_LABEL=True 时生效
+  NOISE_RATE: 0.0        # 合成噪声比例；仅在 NOISE_LABEL=True 时生效
   NOISE_TYPE: "real"   # 噪声类型记录字段；WebFG 场景使用 real
   num_class: 100       # web-aircraft 类别数
   USE_OT: True         # 是否启用 OT 伪标签/clean-noisy 划分逻辑

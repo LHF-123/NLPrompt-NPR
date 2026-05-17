@@ -152,6 +152,8 @@ class WebFG496Base(DatasetBase):
         try:
             with Image.open(impath) as img:
                 img.verify()
+            with Image.open(impath) as img:
+                img.convert("RGB").load()
             return True
         except (UnidentifiedImageError, OSError, ValueError):
             return False
