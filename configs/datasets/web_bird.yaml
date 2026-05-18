@@ -1,9 +1,9 @@
 DATASET:
-  NAME: "WebBird"      # 数据集注册名，对应 datasets/webfg496.py 中的 WebBird
-  NUM_SHOTS: -1        # 每类训练样本数；设为 -1 表示使用全量训练集
-  NOISE_LABEL: False   # WebFG 是真实 web 噪声数据，默认不额外注入合成噪声
-  NOISE_RATE: 0.0        # 合成噪声比例；仅在 NOISE_LABEL=True 时生效
-  NOISE_TYPE: "real"   # 噪声类型记录字段；WebFG 场景使用 real
-  num_class: 200       # web-bird 类别数
-  USE_OT: True         # 是否启用 OT 伪标签/clean-noisy 划分逻辑
-  REG_E: 0.001         # OT 熵正则参数，常用搜索范围：0.001/0.005/0.01
+  NAME: "WebBird"      # dataset registry name
+  NUM_SHOTS: -1        # images per class; -1 means full training set
+  NOISE_LABEL: False   # disable synthetic noise for WebFG
+  NOISE_RATE: 0.0      # used only when NOISE_LABEL=True
+  NOISE_TYPE: "real"   # record real web noise
+  num_class: 200       # number of web-bird classes
+  USE_OT: True         # enable OT clean/noisy split
+  REG_E: 0.005         # OT entropy regularization; try 0.001/0.005/0.01

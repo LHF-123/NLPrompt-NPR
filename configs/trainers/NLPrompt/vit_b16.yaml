@@ -25,8 +25,8 @@ TRAIN:
   PRINT_FREQ: 5
 
 TEST:
-  FINAL_MODEL: "best_val"  # 每个 epoch 跑 val 并保存最好模型；嫌慢可改 last_step
-  SPLIT: "test"            # 最终训练结束后评测 test
+  FINAL_MODEL: "best_val"  # evaluate val every epoch and save the best model
+  SPLIT: "test"            # final test split
 
 TRAINER:
   NAME: "NLPrompt"

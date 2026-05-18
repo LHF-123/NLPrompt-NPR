@@ -27,6 +27,7 @@ import datasets.imagenet_r
 import datasets.webfg496
 
 import trainers.nlprompt
+import trainers.npr
 
 
 def print_args(args, cfg):
@@ -94,6 +95,36 @@ def extend_cfg(cfg):
     cfg.TRAINER.NLPROMPT.CTX_INIT = ""  # initialization words
     cfg.TRAINER.NLPROMPT.PREC = "fp16"  # fp16, fp32, amp
     cfg.TRAINER.NLPROMPT.CLASS_TOKEN_POSITION = "end"  # 'middle' or 'end' or 'front'
+
+    cfg.TRAINER.NPR = CN()
+    cfg.TRAINER.NPR.PROMPT_LENGTH = 16
+    cfg.TRAINER.NPR.CTX_INIT = ""
+    cfg.TRAINER.NPR.PREC = "fp16"
+    cfg.TRAINER.NPR.CLASS_TOKEN_POSITION = "end"
+    cfg.TRAINER.NPR.NEIGHBOR_K = 5
+    cfg.TRAINER.NPR.CANDIDATE_TOPK = 5
+    cfg.TRAINER.NPR.TAU = 0.02
+    cfg.TRAINER.NPR.CLEAN_RATIO = 0.6
+    cfg.TRAINER.NPR.OOD_RATIO = 0.1
+    cfg.TRAINER.NPR.TAU_IN = 0.3
+    cfg.TRAINER.NPR.USE_Q_SEM = True
+    cfg.TRAINER.NPR.USE_Q_DYN = True
+    cfg.TRAINER.NPR.USE_Q_AGREE = True
+    cfg.TRAINER.NPR.Q_EMA_MOMENTUM = 0.9
+    cfg.TRAINER.NPR.PROMPT_EMA_MOMENTUM = 0.999
+    cfg.TRAINER.NPR.USE_ID_PLL = True
+    cfg.TRAINER.NPR.LAMBDA_ID = 0.5
+    cfg.TRAINER.NPR.USE_NOISE_PROMPT = False
+    cfg.TRAINER.NPR.USE_OOD_BRANCH = False
+    cfg.TRAINER.NPR.USE_OOD_ENTROPY = False
+    cfg.TRAINER.NPR.NOISE_TARGET = "entropy"
+    cfg.TRAINER.NPR.LAMBDA_OOD = 0.1
+    cfg.TRAINER.NPR.USE_ORTHO = False
+    cfg.TRAINER.NPR.LAMBDA_ORTHO = 0.01
+    cfg.TRAINER.NPR.STATIC_MODE = "neighbor"
+    cfg.TRAINER.NPR.SPLIT_MODE = "classwise_quantile"
+    cfg.TRAINER.NPR.EVAL_PROMPT = "clean"
+
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
 
     cfg.DATASET.NUM_SHOTS = 16

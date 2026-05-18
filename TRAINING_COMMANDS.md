@@ -231,3 +231,11 @@ rm -rf /path/to/datasets/web-bird/split_fewshot
 ```
 
 `web-aircraft` 和 `web-car` 同理。
+
+如果加载 checkpoint 时报错：
+
+```text
+_pickle.UnpicklingError: Weights only load failed
+```
+
+这是 PyTorch 2.6+ 将 `torch.load` 的 `weights_only` 默认值改为 `True` 后，与包含 optimizer/scheduler 状态的 Dassl checkpoint 不兼容。本仓库已在 `Dassl.pytorch/dassl/utils/torchtools.py` 中显式使用 `weights_only=False` 加载本地训练产生的可信 checkpoint。

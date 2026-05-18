@@ -1,0 +1,50 @@
+DATALOADER:
+  TRAIN_X:
+    BATCH_SIZE: 64
+  TEST:
+    BATCH_SIZE: 256
+  NUM_WORKERS: 8
+
+INPUT:
+  SIZE: (224, 224)
+  INTERPOLATION: "bicubic"
+  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073]
+  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711]
+  TRANSFORMS: ["random_resized_crop", "random_flip", "normalize"]
+
+TEST:
+  SPLIT: "test"
+
+TRAINER:
+  NAME: "CLIPZeroShot"
+  NPR:
+    PROMPT_LENGTH: 16
+    PREC: "fp16"
+    CLASS_TOKEN_POSITION: "end"
+    NEIGHBOR_K: 5
+    CANDIDATE_TOPK: 5
+    TAU: 0.02
+    CLEAN_RATIO: 0.6
+    OOD_RATIO: 0.1
+    TAU_IN: 0.3
+    USE_Q_SEM: true
+    USE_Q_DYN: false
+    USE_Q_AGREE: false
+    Q_EMA_MOMENTUM: 0.9
+    PROMPT_EMA_MOMENTUM: 0.999
+    USE_ID_PLL: false
+    LAMBDA_ID: 0.5
+    USE_NOISE_PROMPT: false
+    USE_OOD_BRANCH: false
+    USE_OOD_ENTROPY: false
+    NOISE_TARGET: "entropy"
+    LAMBDA_OOD: 0.1
+    USE_ORTHO: false
+    LAMBDA_ORTHO: 0.01
+    STATIC_MODE: "neighbor"
+    SPLIT_MODE: "classwise_quantile"
+    EVAL_PROMPT: "clean"
+
+MODEL:
+  BACKBONE:
+    NAME: "ViT-B/16"

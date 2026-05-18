@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: dassl
 Version: 0.6.3
 Summary: Dassl: Domain adaptation and semi-supervised learning
@@ -21,6 +21,14 @@ Requires-Dist: ftfy
 Requires-Dist: regex
 Requires-Dist: wilds==1.2.2
 Requires-Dist: tabulate
+Requires-Dist: pot
+Dynamic: author
+Dynamic: description
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: requires-dist
+Dynamic: summary
 
 # Dassl
 

@@ -2,30 +2,42 @@
 
 #cd ../..
 
-# custom config
-DATA=/path/to/datasets
-TRAINER=NLPrompt
-SHOTS=16
-NCTX=16
-CSC=False
-CTP=end
+set -euo pipefail
+
+DATA=${DATA:-/path/to/datasets}
+TRAINER=${TRAINER:-NLPrompt}
+SHOTS=${SHOTS:-16}
+NCTX=${NCTX:-16}
+CSC=${CSC:-False}
+CTP=${CTP:-end}
+SEED_LIST=${SEED_LIST:-"1 2 3"}
+LOAD_EPOCH=${LOAD_EPOCH:-50}
+
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 <DATASET> <CFG> [extra train.py opts]"
+    exit 1
+fi
 
 DATASET=$1
 CFG=$2
+shift 2
 
-for SEED in 1 2 3
+MODEL_ROOT=${MODEL_ROOT:-output/imagenet/${TRAINER}/${CFG}_${SHOTS}shots/nctx${NCTX}_csc${CSC}_ctp${CTP}}
+
+for SEED in ${SEED_LIST}
 do
     python train.py \
-    --root ${DATA} \
-    --seed ${SEED} \
-    --trainer ${TRAINER} \
-    --dataset-config-file configs/datasets/${DATASET}.yaml \
-    --config-file configs/trainers/${TRAINER}/${CFG}.yaml \
-    --output-dir output/evaluation/${TRAINER}/${CFG}_${SHOTS}shots/nctx${NCTX}_csc${CSC}_ctp${CTP}/${DATASET}/seed${SEED} \
-    --model-dir output/imagenet/${TRAINER}/${CFG}_${SHOTS}shots/nctx${NCTX}_csc${CSC}_ctp${CTP}/seed${SEED} \
-    --load-epoch 50 \
+    --root "${DATA}" \
+    --seed "${SEED}" \
+    --trainer "${TRAINER}" \
+    --dataset-config-file "configs/datasets/${DATASET}.yaml" \
+    --config-file "configs/trainers/${TRAINER}/${CFG}.yaml" \
+    --output-dir "output/evaluation/${TRAINER}/${CFG}_${SHOTS}shots/nctx${NCTX}_csc${CSC}_ctp${CTP}/${DATASET}/seed${SEED}" \
+    --model-dir "${MODEL_ROOT}/seed${SEED}" \
+    --load-epoch "${LOAD_EPOCH}" \
     --eval-only \
-    TRAINER.COOP.N_CTX ${NCTX} \
-    TRAINER.COOP.CSC ${CSC} \
-    TRAINER.COOP.CLASS_TOKEN_POSITION ${CTP}
+    TRAINER.NLPROMPT.N_CTX "${NCTX}" \
+    TRAINER.NLPROMPT.CSC "${CSC}" \
+    TRAINER.NLPROMPT.CLASS_TOKEN_POSITION "${CTP}" \
+    "$@"
 done
