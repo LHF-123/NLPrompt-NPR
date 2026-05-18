@@ -452,16 +452,18 @@ class NPR(TrainerX):
         id_batch = self.id_mask[index]
         ood_batch = self.ood_mask[index]
 
-        zero = logits_clean.sum() * 0.0
+        zero = logits_clean.new_zeros(())
         loss = zero
         loss_clean = zero
         loss_id = zero
         loss_ood = zero
         loss_ortho = zero
+        has_active_loss = False
 
         if clean_batch.any():
             loss_clean = F.cross_entropy(logits_clean[clean_batch], labels[clean_batch])
             loss = loss + loss_clean
+            has_active_loss = True
 
         if id_batch.any() and self.npr_cfg.USE_ID_PLL:
             with torch.no_grad():
@@ -471,6 +473,7 @@ class NPR(TrainerX):
                 candidates = self._candidate_mask(labels, p_hard, p_ema)
             loss_id = self._partial_label_loss(logits_clean[id_batch], candidates[id_batch])
             loss = loss + self.npr_cfg.LAMBDA_ID * loss_id
+            has_active_loss = True
 
         if ood_batch.any() and self.npr_cfg.USE_NOISE_PROMPT:
             if self.npr_cfg.NOISE_TARGET == "fit_hard":
@@ -484,10 +487,12 @@ class NPR(TrainerX):
                 logits_noise = self.model(images[ood_batch], prompt="noise")
                 loss_ood = self._high_entropy_loss(logits_noise)
             loss = loss + self.npr_cfg.LAMBDA_OOD * loss_ood
+            has_active_loss = True
 
         if self.npr_cfg.USE_NOISE_PROMPT and self.npr_cfg.USE_ORTHO:
             loss_ortho = self._orthogonal_loss()
             loss = loss + self.npr_cfg.LAMBDA_ORTHO * loss_ortho
+            has_active_loss = True
 
         return loss, logits_clean, {
             "loss": loss.item(),
@@ -498,6 +503,7 @@ class NPR(TrainerX):
             "n_clean": float(clean_batch.sum().item()),
             "n_id": float(id_batch.sum().item()),
             "n_ood": float(ood_batch.sum().item()),
+            "skip": 0.0 if has_active_loss else 1.0,
         }
 
     def forward_backward(self, batch):
@@ -506,12 +512,18 @@ class NPR(TrainerX):
         if self.prec == "amp":
             with autocast():
                 loss, logits, summary = self._compute_loss(images, labels, index)
+            if summary["skip"] > 0:
+                summary["acc"] = 0.0
+                return summary
             self.optim.zero_grad()
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optim)
             self.scaler.update()
         else:
             loss, logits, summary = self._compute_loss(images, labels, index)
+            if summary["skip"] > 0:
+                summary["acc"] = 0.0
+                return summary
             self.model_backward_and_update(loss)
 
         self.model.prompt_modules.update_clean_ema(self.npr_cfg.PROMPT_EMA_MOMENTUM)
