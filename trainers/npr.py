@@ -252,6 +252,11 @@ class NPR(TrainerX):
         assert cfg.TRAINER.NPR.SPLIT_MODE == "classwise_quantile"
         assert cfg.TRAINER.NPR.EVAL_PROMPT == "clean"
         assert cfg.TRAINER.NPR.NOISE_TARGET in ["entropy", "fit_hard", "clean_reject"]
+        assert cfg.TRAINER.NPR.CLEAN_SPLIT_MODE in ["reliability", "full_softmax", "neighbor"]
+        assert cfg.TRAINER.NPR.Q_DYN_MODE in ["exp_entropy", "norm_entropy", "margin"]
+        assert cfg.TRAINER.NPR.Q_FUSION_MODE in ["product", "weighted_sum", "rank"]
+        assert cfg.TRAINER.NPR.ID_SPLIT_MODE in ["remaining", "middle"]
+        assert cfg.TRAINER.NPR.CANDIDATE_MODE in ["union", "intersection", "small"]
 
     def build_model(self):
         cfg = self.cfg
@@ -300,38 +305,108 @@ class NPR(TrainerX):
         sim.fill_diagonal_(-float("inf"))
         return sim.topk(k=k, dim=1).indices
 
-    def _compute_q_sem(self, hard_logits_tau, p_hard, labels):
-        if self.npr_cfg.STATIC_MODE == "full_softmax":
-            return p_hard[torch.arange(labels.size(0), device=labels.device), labels]
+    @staticmethod
+    def _label_prob(probs, labels):
+        return probs[torch.arange(labels.size(0), device=labels.device), labels]
 
+    def _compute_q_neighbor(self, hard_logits_tau, labels):
         neighbors = self.semantic_neighbors[labels]
         candidates = torch.cat([labels.unsqueeze(1), neighbors], dim=1)
         candidate_logits = hard_logits_tau.gather(1, candidates)
         return F.softmax(candidate_logits, dim=1)[:, 0]
 
-    def _combine_reliability(self, q_sem, p_hard, p_ema, labels):
-        q = q_sem if self.npr_cfg.USE_Q_SEM else None
+    def _compute_q_sem(self, hard_logits_tau, p_hard, labels):
+        if self.npr_cfg.STATIC_MODE == "full_softmax":
+            return self._label_prob(p_hard, labels)
+        return self._compute_q_neighbor(hard_logits_tau, labels)
 
+    def _compute_q_dyn(self, p_ema, labels):
+        p_y = self._label_prob(p_ema, labels)
         if self.npr_cfg.USE_Q_DYN:
-            p_y = p_ema[torch.arange(labels.size(0), device=labels.device), labels]
-            entropy = -(p_ema * self._safe_log(p_ema)).sum(dim=1)
-            q_dyn = p_y * torch.exp(-entropy)
-            q = q_dyn if q is None else torch.sqrt((q * q_dyn).clamp_min(1e-12))
+            if self.npr_cfg.Q_DYN_MODE == "exp_entropy":
+                entropy = -(p_ema * self._safe_log(p_ema)).sum(dim=1)
+                return p_y * torch.exp(-entropy)
+            if self.npr_cfg.Q_DYN_MODE == "norm_entropy":
+                entropy = -(p_ema * self._safe_log(p_ema)).sum(dim=1)
+                confidence = 1.0 - entropy / math.log(p_ema.size(1))
+                return p_y * confidence.clamp(0.0, 1.0)
+            if self.npr_cfg.Q_DYN_MODE == "margin":
+                competitors = p_ema.clone()
+                competitors.scatter_(1, labels.unsqueeze(1), -1.0)
+                margin = p_y - competitors.max(dim=1).values
+                return margin.clamp(0.0, 1.0)
+        return p_y
 
+    def _combine_reliability(self, q_sem, q_dyn, q_agree):
+        components = []
+        if self.npr_cfg.USE_Q_SEM:
+            components.append(q_sem)
+        if self.npr_cfg.USE_Q_DYN:
+            components.append(q_dyn)
         if self.npr_cfg.USE_Q_AGREE:
-            q_agree = (p_hard * p_ema).sum(dim=1)
-            q = q_agree if q is None else q * q_agree
+            components.append(q_agree)
 
-        if q is None:
-            q = q_sem
+        if not components:
+            components.append(q_sem)
+
+        if self.npr_cfg.Q_FUSION_MODE == "weighted_sum":
+            q = torch.stack(components, dim=0).mean(dim=0)
+        elif self.npr_cfg.Q_FUSION_MODE == "product" and self.npr_cfg.USE_Q_SEM and self.npr_cfg.USE_Q_DYN:
+            q = torch.sqrt((q_sem * q_dyn).clamp_min(1e-12))
+            if self.npr_cfg.USE_Q_AGREE:
+                q = q * q_agree
+        else:
+            q = components[0]
+            for component in components[1:]:
+                q = q * component
 
         return q.clamp(0.0, 1.0)
+
+    def _rank_fusion_reliability(self, q_sem, q_dyn, q_agree, labels):
+        scores = torch.zeros_like(q_sem)
+        components = []
+        if self.npr_cfg.USE_Q_SEM:
+            components.append(q_sem)
+        if self.npr_cfg.USE_Q_DYN:
+            components.append(q_dyn)
+        if self.npr_cfg.USE_Q_AGREE:
+            components.append(q_agree)
+        if not components:
+            components.append(q_sem)
+
+        for cls in labels.unique(sorted=True):
+            cls_idx = torch.nonzero(labels == cls, as_tuple=False).flatten()
+            if cls_idx.numel() <= 1:
+                scores[cls_idx] = 1.0
+                continue
+            cls_score = torch.zeros(cls_idx.numel(), device=labels.device)
+            denom = max(cls_idx.numel() - 1, 1)
+            for component in components:
+                order = torch.argsort(component[cls_idx], descending=True)
+                rank = torch.empty_like(order, dtype=torch.float)
+                rank[order] = torch.arange(order.numel(), device=labels.device, dtype=torch.float)
+                cls_score += 1.0 - rank / denom
+            scores[cls_idx] = cls_score / len(components)
+        return scores.clamp(0.0, 1.0)
+
+    def _select_split_reliability(self, q_full, q_neighbor, q_sem, q_dyn, q_agree, labels):
+        if self.npr_cfg.CLEAN_SPLIT_MODE == "full_softmax":
+            return q_full
+        if self.npr_cfg.CLEAN_SPLIT_MODE == "neighbor":
+            return q_neighbor
+        if self.npr_cfg.Q_FUSION_MODE == "rank":
+            return self._rank_fusion_reliability(q_sem, q_dyn, q_agree, labels)
+        return self._combine_reliability(q_sem, q_dyn, q_agree)
 
     @torch.no_grad()
     def before_epoch(self):
         self.set_model_mode("eval")
         num_samples = len(self.train_loader_x.dataset)
-        all_q = torch.zeros(num_samples, device=self.device)
+        all_q_full = torch.zeros(num_samples, device=self.device)
+        all_q_neighbor = torch.zeros(num_samples, device=self.device)
+        all_q_sem = torch.zeros(num_samples, device=self.device)
+        all_q_dyn = torch.zeros(num_samples, device=self.device)
+        all_q_agree = torch.zeros(num_samples, device=self.device)
         all_q_in = torch.zeros(num_samples, device=self.device)
         all_labels = torch.zeros(num_samples, dtype=torch.long, device=self.device)
 
@@ -350,13 +425,29 @@ class NPR(TrainerX):
                 ema_logits_tau = image_features @ ema_text.t() / self.npr_cfg.TAU
                 p_ema = F.softmax(ema_logits_tau, dim=1)
 
-            q_sem = self._compute_q_sem(hard_logits_tau, p_hard, labels)
-            q = self._combine_reliability(q_sem, p_hard, p_ema, labels)
+            q_full = self._label_prob(p_hard, labels)
+            q_neighbor = self._compute_q_neighbor(hard_logits_tau, labels)
+            q_sem = q_full if self.npr_cfg.STATIC_MODE == "full_softmax" else q_neighbor
+            q_dyn = self._compute_q_dyn(p_ema, labels)
+            q_agree = (p_hard * p_ema).sum(dim=1)
             q_in = 0.5 * (p_hard.max(dim=1).values + p_ema.max(dim=1).values)
 
-            all_q[index] = q.float()
+            all_q_full[index] = q_full.float()
+            all_q_neighbor[index] = q_neighbor.float()
+            all_q_sem[index] = q_sem.float()
+            all_q_dyn[index] = q_dyn.float()
+            all_q_agree[index] = q_agree.float()
             all_q_in[index] = q_in.float()
             all_labels[index] = labels
+
+        all_q = self._select_split_reliability(
+            all_q_full,
+            all_q_neighbor,
+            all_q_sem,
+            all_q_dyn,
+            all_q_agree,
+            all_labels,
+        )
 
         if self.q_ema is None or self.q_ema.numel() != num_samples:
             self.q_ema = all_q.clone()
@@ -370,6 +461,13 @@ class NPR(TrainerX):
             f"mean={self.q_ema.mean().item():.4f} "
             f"min={self.q_ema.min().item():.4f} "
             f"max={self.q_ema.max().item():.4f}"
+        )
+        print(
+            "NPR reliability components "
+            f"full={all_q_full.mean().item():.4f} "
+            f"neighbor={all_q_neighbor.mean().item():.4f} "
+            f"dyn={all_q_dyn.mean().item():.4f} "
+            f"agree={all_q_agree.mean().item():.4f}"
         )
 
     def _build_split_masks(self, q_values, q_in, labels):
@@ -396,7 +494,13 @@ class NPR(TrainerX):
                     ood_mask[low_idx] = True
 
             if self.npr_cfg.USE_ID_PLL:
-                id_idx = sorted_idx[~clean_mask[sorted_idx] & ~ood_mask[sorted_idx]]
+                if self.npr_cfg.ID_SPLIT_MODE == "middle":
+                    n_low = int(math.floor(n_cls * self.npr_cfg.OOD_RATIO))
+                    end = n_cls - n_low if n_low > 0 else n_cls
+                    id_idx = sorted_idx[n_clean:end]
+                    id_idx = id_idx[~ood_mask[id_idx]]
+                else:
+                    id_idx = sorted_idx[~clean_mask[sorted_idx] & ~ood_mask[sorted_idx]]
                 id_mask[id_idx] = True
 
         self.clean_mask = clean_mask
@@ -420,10 +524,67 @@ class NPR(TrainerX):
         num_classes = p_hard.size(1)
         topk = min(self.npr_cfg.CANDIDATE_TOPK, num_classes)
         mask = torch.zeros(batch_size, num_classes, dtype=torch.bool, device=labels.device)
-        mask.scatter_(1, labels.unsqueeze(1), True)
-        mask.scatter_(1, p_hard.topk(k=topk, dim=1).indices, True)
-        mask.scatter_(1, p_ema.topk(k=topk, dim=1).indices, True)
-        mask.scatter_(1, self.semantic_neighbors[labels], True)
+        hard_top = p_hard.topk(k=topk, dim=1).indices
+        ema_top = p_ema.topk(k=topk, dim=1).indices
+        neighbor_topk = self.npr_cfg.CANDIDATE_NEIGHBOR_TOPK
+        if neighbor_topk <= 0:
+            neighbor_topk = self.semantic_neighbors.size(1)
+        neighbor_topk = min(neighbor_topk, self.semantic_neighbors.size(1))
+        neighbors = self.semantic_neighbors[labels][:, :neighbor_topk]
+        max_candidates = self.npr_cfg.MAX_CANDIDATES
+        candidate_mode = self.npr_cfg.CANDIDATE_MODE
+
+        if max_candidates <= 0 and candidate_mode == "union":
+            mask.scatter_(1, labels.unsqueeze(1), True)
+            mask.scatter_(1, hard_top, True)
+            mask.scatter_(1, ema_top, True)
+            if neighbor_topk > 0:
+                mask.scatter_(1, neighbors, True)
+            return mask
+
+        if max_candidates <= 0 and candidate_mode == "intersection":
+            mask.scatter_(1, labels.unsqueeze(1), True)
+            hard_in_ema = (hard_top.unsqueeze(2) == ema_top.unsqueeze(1)).any(dim=2)
+            hard_intersection = torch.zeros_like(mask)
+            hard_intersection.scatter_(1, hard_top, hard_in_ema)
+            mask |= hard_intersection
+            if neighbor_topk > 0:
+                mask.scatter_(1, neighbors, True)
+            return mask
+
+        labels_cpu = labels.detach().cpu().tolist()
+        hard_top_cpu = hard_top.detach().cpu().tolist()
+        ema_top_cpu = ema_top.detach().cpu().tolist()
+        neighbors_cpu = neighbors.detach().cpu().tolist()
+        row_indices = []
+        col_indices = []
+
+        for row in range(batch_size):
+            ordered = [labels_cpu[row]]
+            if candidate_mode == "intersection":
+                ema_set = set(ema_top_cpu[row])
+                ordered += [cls for cls in hard_top_cpu[row] if cls in ema_set]
+            else:
+                ordered += hard_top_cpu[row]
+                ordered += ema_top_cpu[row]
+            ordered += neighbors_cpu[row]
+
+            deduped = []
+            seen = set()
+            for cls in ordered:
+                if cls in seen:
+                    continue
+                seen.add(cls)
+                deduped.append(cls)
+                if max_candidates > 0 and len(deduped) >= max_candidates:
+                    break
+            row_indices.extend([row] * len(deduped))
+            col_indices.extend(deduped)
+
+        if row_indices:
+            rows = torch.tensor(row_indices, device=labels.device)
+            cols = torch.tensor(col_indices, device=labels.device)
+            mask[rows, cols] = True
         return mask
 
     @staticmethod

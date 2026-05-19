@@ -1,0 +1,71 @@
+DATALOADER:
+  TRAIN_X:
+    BATCH_SIZE: 64
+  TEST:
+    BATCH_SIZE: 256
+  NUM_WORKERS: 8
+
+INPUT:
+  SIZE: (224, 224)
+  INTERPOLATION: "bicubic"
+  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073]
+  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711]
+  TRANSFORMS: ["random_resized_crop", "random_flip", "normalize"]
+
+OPTIM:
+  NAME: "sgd"
+  LR: 0.001
+  WEIGHT_DECAY: 0.0001
+  MAX_EPOCH: 100
+  LR_SCHEDULER: "cosine"
+  WARMUP_EPOCH: 1
+  WARMUP_TYPE: "constant"
+  WARMUP_CONS_LR: 1e-5
+
+TRAIN:
+  PRINT_FREQ: 5
+
+TEST:
+  FINAL_MODEL: "best_val"
+  SPLIT: "test"
+
+TRAINER:
+  NAME: "NPR"
+  NPR:
+    PROMPT_LENGTH: 16
+    PREC: "fp16"
+    CLASS_TOKEN_POSITION: "end"
+    NEIGHBOR_K: 5
+    CANDIDATE_TOPK: 5
+    CANDIDATE_NEIGHBOR_TOPK: 0
+    MAX_CANDIDATES: 0
+    TAU: 0.02
+    CLEAN_RATIO: 0.6
+    OOD_RATIO: 0.1
+    TAU_IN: 0.3
+    USE_Q_SEM: true
+    USE_Q_DYN: true
+    USE_Q_AGREE: true
+    CLEAN_SPLIT_MODE: "full_softmax"
+    Q_DYN_MODE: "exp_entropy"
+    Q_FUSION_MODE: "product"
+    ID_SPLIT_MODE: "remaining"
+    CANDIDATE_MODE: "union"
+    Q_EMA_MOMENTUM: 0.9
+    PROMPT_EMA_MOMENTUM: 0.999
+    USE_ID_PLL: true
+    LAMBDA_ID: 0.5
+    USE_NOISE_PROMPT: false
+    USE_OOD_BRANCH: false
+    USE_OOD_ENTROPY: false
+    NOISE_TARGET: "entropy"
+    LAMBDA_OOD: 0.1
+    USE_ORTHO: false
+    LAMBDA_ORTHO: 0.01
+    STATIC_MODE: "neighbor"
+    SPLIT_MODE: "classwise_quantile"
+    EVAL_PROMPT: "clean"
+
+MODEL:
+  BACKBONE:
+    NAME: "ViT-B/16"

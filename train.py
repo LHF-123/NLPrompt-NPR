@@ -110,6 +110,13 @@ def extend_cfg(cfg):
     cfg.TRAINER.NPR.USE_Q_SEM = True
     cfg.TRAINER.NPR.USE_Q_DYN = True
     cfg.TRAINER.NPR.USE_Q_AGREE = True
+    cfg.TRAINER.NPR.CLEAN_SPLIT_MODE = "reliability"
+    cfg.TRAINER.NPR.Q_DYN_MODE = "exp_entropy"
+    cfg.TRAINER.NPR.Q_FUSION_MODE = "product"
+    cfg.TRAINER.NPR.ID_SPLIT_MODE = "remaining"
+    cfg.TRAINER.NPR.CANDIDATE_MODE = "union"
+    cfg.TRAINER.NPR.CANDIDATE_NEIGHBOR_TOPK = 0
+    cfg.TRAINER.NPR.MAX_CANDIDATES = 0
     cfg.TRAINER.NPR.Q_EMA_MOMENTUM = 0.9
     cfg.TRAINER.NPR.PROMPT_EMA_MOMENTUM = 0.999
     cfg.TRAINER.NPR.USE_ID_PLL = True
